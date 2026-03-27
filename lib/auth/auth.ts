@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db/mongoose";
 import User from "@/lib/db/models/User";
+import Household from "@/lib/db/models/Household";
 
 export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
   providers: [
@@ -25,12 +26,17 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
         );
         if (!isValid) return null;
 
+        // Look up household membership in case householdId isn't on the user doc
+        const userId = user._id.toString();
+        const household = await Household.findOne({ members: userId }).lean();
+        const householdId = user.householdId ?? household?._id?.toString() ?? null;
+
         return {
-          id: user._id.toString(),
+          id: userId,
           email: user.email,
           name: user.name,
           image: user.avatar,
-          householdId: user.householdId ?? null,
+          householdId,
         };
       },
     }),
