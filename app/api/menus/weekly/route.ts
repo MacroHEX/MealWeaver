@@ -47,6 +47,24 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(menu);
 }
 
+export async function PATCH(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
+  const { year, week, prices } = await req.json();
+  await connectDB();
+  const scopeId = getScopeId(session);
+
+  const menu = await WeeklyMenu.findOneAndUpdate(
+    { scopeId, year, week },
+    { prices },
+    { new: true }
+  ).lean();
+
+  if (!menu) return NextResponse.json({ error: "Menú no encontrado" }, { status: 404 });
+  return NextResponse.json(menu);
+}
+
 export async function PUT(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });

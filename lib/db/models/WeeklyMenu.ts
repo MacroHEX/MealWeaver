@@ -16,6 +16,7 @@ export interface IWeeklyMenu {
   year: number;
   week: number;
   days: IDayMenu[];
+  prices: Record<string, number>; // ingredient name → price
   createdAt: Date;
   updatedAt: Date;
 }
@@ -42,6 +43,7 @@ const WeeklyMenuSchema = new Schema<IWeeklyMenu>(
     year: { type: Number, required: true },
     week: { type: Number, required: true },
     days: { type: [DayMenuSchema], default: [] },
+    prices: { type: Map, of: Number, default: {} },
   },
   { timestamps: true }
 );

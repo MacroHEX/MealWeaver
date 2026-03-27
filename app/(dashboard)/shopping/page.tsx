@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ShoppingItem } from "@/app/api/shopping-list/route";
+import type { IWeeklyMenu } from "@/lib/db/models/WeeklyMenu";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { getWeekNumber, getWeekStartEnd, formatDate } from "@/lib/utils";
@@ -19,39 +20,29 @@ const today = new Date();
 const currentYear = today.getFullYear();
 const currentWeek = getWeekNumber(today);
 
-function storageKey(year: number, week: number) {
+function checkedKey(year: number, week: number) {
   return `shopping-checked-${year}-${week}`;
 }
-
 function loadChecked(year: number, week: number): Set<string> {
   try {
-    const raw = localStorage.getItem(storageKey(year, week));
+    const raw = localStorage.getItem(checkedKey(year, week));
     return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function saveChecked(year: number, week: number, checked: Set<string>) {
-  try {
-    localStorage.setItem(storageKey(year, week), JSON.stringify([...checked]));
-  } catch {
-    // ignore
-  }
+  } catch { return new Set(); }
 }
 
 export default function ShoppingPage() {
   const [year, setYear] = useState(currentYear);
   const [week, setWeek] = useState(currentWeek);
   const [checked, setChecked] = useState<Set<string>>(() => loadChecked(currentYear, currentWeek));
+  const [prices, setPrices] = useState<Record<string, number>>({});
   const [copied, setCopied] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Persist checked state on every change
+  // Persist checked in localStorage
   useEffect(() => {
-    saveChecked(year, week, checked);
+    try { localStorage.setItem(checkedKey(year, week), JSON.stringify([...checked])); } catch {}
   }, [checked, year, week]);
 
-  // Load persisted state when week changes
   useEffect(() => {
     setChecked(loadChecked(year, week));
   }, [year, week]);
@@ -60,9 +51,22 @@ export default function ShoppingPage() {
 
   const { data: items = [], isLoading } = useQuery<ShoppingItem[]>({
     queryKey: ["shopping-list", year, week],
-    queryFn: () =>
-      fetch(`/api/shopping-list?year=${year}&week=${week}`).then((r) => r.json()),
+    queryFn: () => fetch(`/api/shopping-list?year=${year}&week=${week}`).then((r) => r.json()),
   });
+
+  // Load prices from DB when menu loads
+  const { data: menu } = useQuery<IWeeklyMenu | null>({
+    queryKey: ["weekly-menu", year, week],
+    queryFn: () => fetch(`/api/menus/weekly?year=${year}&week=${week}`).then((r) => r.json()),
+  });
+
+  useEffect(() => {
+    if (menu?.prices) {
+      setPrices(menu.prices as unknown as Record<string, number>);
+    } else {
+      setPrices({});
+    }
+  }, [menu]);
 
   function toggleItem(name: string) {
     setChecked((prev) => {
@@ -71,6 +75,22 @@ export default function ShoppingPage() {
       else next.add(name);
       return next;
     });
+  }
+
+  function handlePriceChange(name: string, value: string) {
+    const num = parseFloat(value) || 0;
+    const updated = { ...prices, [name]: num };
+    setPrices(updated);
+
+    // Debounced save to DB
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetch("/api/menus/weekly", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year, week, prices: updated }),
+      });
+    }, 600);
   }
 
   function copyToClipboard() {
@@ -96,6 +116,11 @@ export default function ShoppingPage() {
   }
 
   const pendingCount = items.filter((i) => !checked.has(i.name)).length;
+  const totalAll = items.reduce((sum, i) => sum + (prices[i.name] || 0), 0);
+  const totalSpent = items
+    .filter((i) => checked.has(i.name))
+    .reduce((sum, i) => sum + (prices[i.name] || 0), 0);
+  const hasPrices = totalAll > 0;
 
   return (
     <div className="flex flex-col gap-6 max-w-2xl mx-auto w-full">
@@ -159,27 +184,22 @@ export default function ShoppingPage() {
           {items.map((item) => {
             const done = checked.has(item.name);
             return (
-              <button
+              <div
                 key={item.name}
-                onClick={() => toggleItem(item.name)}
-                className={`
-                  w-full flex items-center gap-3 px-4 py-3 text-left
-                  hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors
-                  ${done ? "opacity-50" : ""}
-                `}
+                className={`flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50 ${done ? "opacity-50" : ""}`}
               >
                 {/* Checkbox */}
-                <div className={`
-                  flex items-center justify-center w-5 h-5 rounded-full border-2 shrink-0 transition-colors
-                  ${done
-                    ? "border-emerald-500 bg-emerald-500"
-                    : "border-slate-300 dark:border-slate-500"}
-                `}>
+                <button
+                  onClick={() => toggleItem(item.name)}
+                  className={`flex items-center justify-center w-5 h-5 rounded-full border-2 shrink-0 transition-colors ${
+                    done ? "border-emerald-500 bg-emerald-500" : "border-slate-300 dark:border-slate-500"
+                  }`}
+                >
                   {done && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
-                </div>
+                </button>
 
                 {/* Name + quantity */}
-                <div className="flex-1 min-w-0">
+                <button onClick={() => toggleItem(item.name)} className="flex-1 min-w-0 text-left">
                   <span className={`text-sm font-medium ${done ? "line-through text-slate-400" : "text-slate-800 dark:text-slate-100"}`}>
                     {item.name}
                   </span>
@@ -188,17 +208,42 @@ export default function ShoppingPage() {
                       {item.quantities.join(" + ")}
                     </span>
                   )}
-                </div>
+                </button>
 
-                {/* Used in */}
-                <span className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-[140px] text-right hidden sm:block">
-                  {item.mealNames.slice(0, 2).join(", ")}
-                  {item.mealNames.length > 2 && ` +${item.mealNames.length - 2}`}
-                </span>
-              </button>
+                {/* Price input */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-xs text-slate-400">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="0"
+                    value={prices[item.name] || ""}
+                    onChange={(e) => handlePriceChange(item.name, e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-20 px-2 py-1 text-sm text-right rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
             );
           })}
         </Card>
+      )}
+
+      {/* Totals */}
+      {hasPrices && (
+        <div className="flex flex-col gap-1.5 px-1">
+          <div className="flex justify-between text-sm text-slate-500 dark:text-slate-400">
+            <span>Gastado</span>
+            <span className="font-medium text-emerald-600 dark:text-emerald-400">
+              ${totalSpent.toLocaleString("es-AR")}
+            </span>
+          </div>
+          <div className="flex justify-between text-sm font-semibold text-slate-700 dark:text-slate-200 border-t border-slate-200 dark:border-slate-700 pt-1.5">
+            <span>Total estimado</span>
+            <span>${totalAll.toLocaleString("es-AR")}</span>
+          </div>
+        </div>
       )}
 
       {checked.size > 0 && (
