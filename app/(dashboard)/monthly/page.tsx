@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Meal, MEAL_TYPE_LABELS, MEAL_TYPE_COLORS, DAY_LABELS, DayOfWeek } from "@/types";
-import type { IWeeklyMenu } from "@/lib/db/models/WeeklyMenu";
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { getWeekNumber, getWeeksInMonth, getWeekStartEnd, formatMonth } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, Wand2, CalendarRange } from "lucide-react";
+import {useState} from "react";
+import {useQuery, useQueryClient} from "@tanstack/react-query";
+import {DAY_LABELS, DayOfWeek, Meal, MEAL_TYPE_COLORS} from "@/types";
+import type {IWeeklyMenu} from "@/lib/db/models/WeeklyMenu";
+import {Button} from "@/components/ui/Button";
+import {Card} from "@/components/ui/Card";
+import {formatMonth, getWeekNumber, getWeeksInMonth, getWeekStartEnd} from "@/lib/utils";
+import {CalendarRange, ChevronLeft, ChevronRight, Wand2} from "lucide-react";
 
 const today = new Date();
 
@@ -24,13 +24,13 @@ export default function MonthlyPage() {
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [generating, setGenerating] = useState(false);
 
-  const { data: mealsData = [] } = useQuery<Meal[]>({
+  const {data: mealsData = []} = useQuery<Meal[]>({
     queryKey: ["meals"],
     queryFn: () => fetch("/api/meals").then((r) => r.json()),
   });
   const mealsMap = Object.fromEntries(mealsData.map((m) => [m._id, m]));
 
-  const { data, isLoading } = useQuery<{ weeks: number[]; menus: IWeeklyMenu[] }>({
+  const {data, isLoading} = useQuery<{ weeks: number[]; menus: IWeeklyMenu[] }>({
     queryKey: ["monthly-menus", year, month],
     queryFn: () =>
       fetch(`/api/menus/monthly?year=${year}&month=${month}`).then((r) => r.json()),
@@ -45,24 +45,29 @@ export default function MonthlyPage() {
     try {
       const res = await fetch("/api/menus/monthly", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ year, month }),
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({year, month}),
       });
       const result = await res.json();
       if (!res.ok) alert(result.error ?? "Error generando menú");
-      else queryClient.invalidateQueries({ queryKey: ["monthly-menus", year, month] });
+      else queryClient.invalidateQueries({queryKey: ["monthly-menus", year, month]});
     } finally {
       setGenerating(false);
     }
   }
 
   function prevMonth() {
-    if (month === 1) { setYear(y => y - 1); setMonth(12); }
-    else setMonth(m => m - 1);
+    if (month === 1) {
+      setYear(y => y - 1);
+      setMonth(12);
+    } else setMonth(m => m - 1);
   }
+
   function nextMonth() {
-    if (month === 12) { setYear(y => y + 1); setMonth(1); }
-    else setMonth(m => m + 1);
+    if (month === 12) {
+      setYear(y => y + 1);
+      setMonth(1);
+    } else setMonth(m => m + 1);
   }
 
   const currentWeek = getWeekNumber(today);
@@ -82,21 +87,24 @@ export default function MonthlyPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1" onClick={prevMonth}>
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4"/>
             Anterior
           </Button>
           {!isCurrentMonth && (
-            <Button variant="outline" size="sm" className="gap-1" onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth() + 1); }}>
-              <CalendarRange className="w-3.5 h-3.5" />
+            <Button variant="outline" size="sm" className="gap-1" onClick={() => {
+              setYear(today.getFullYear());
+              setMonth(today.getMonth() + 1);
+            }}>
+              <CalendarRange className="w-3.5 h-3.5"/>
               Hoy
             </Button>
           )}
           <Button variant="outline" size="sm" className="gap-1" onClick={nextMonth}>
             Siguiente
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-4 h-4"/>
           </Button>
           <Button onClick={generateMonth} loading={generating} size="sm" className="gap-1.5">
-            <Wand2 className="w-4 h-4" />
+            <Wand2 className="w-4 h-4"/>
             Generar mes
           </Button>
         </div>
@@ -111,13 +119,13 @@ export default function MonthlyPage() {
 
       {isLoading ? (
         <div className="flex items-center justify-center h-48">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"/>
         </div>
       ) : (
         <div className="flex flex-col gap-4">
           {weeks.map((week) => {
             const weekYear = week === 1 && month === 12 ? year + 1 : year;
-            const { start, end } = getWeekStartEnd(weekYear, week);
+            const {start, end} = getWeekStartEnd(weekYear, week);
             const menu = menuByWeek[week];
             const isThisWeek = isCurrentMonth && week === currentWeek;
 
@@ -127,26 +135,29 @@ export default function MonthlyPage() {
                 className={`overflow-hidden ${isThisWeek ? "ring-2 ring-emerald-400" : ""}`}
               >
                 {/* Week header */}
-                <div className={`flex items-center justify-between px-4 py-2.5 border-b border-slate-100 dark:border-slate-700 ${isThisWeek ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-slate-50 dark:bg-slate-800/50"}`}>
+                <div
+                  className={`flex items-center justify-between px-4 py-2.5 border-b border-slate-100 dark:border-slate-700 ${isThisWeek ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-slate-50 dark:bg-slate-800/50"}`}>
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                     Semana {week}
                     {isThisWeek && (
-                      <span className="ml-2 text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full">Esta semana</span>
+                      <span
+                        className="ml-2 text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full">Esta semana</span>
                     )}
                   </span>
                   <span className="text-xs text-slate-400 capitalize">
-                    {start.toLocaleDateString("es-CL", { day: "numeric", month: "short" })} –{" "}
-                    {end.toLocaleDateString("es-CL", { day: "numeric", month: "short" })}
+                    {start.toLocaleDateString("es-CL", {day: "numeric", month: "short"})} –{" "}
+                    {end.toLocaleDateString("es-CL", {day: "numeric", month: "short"})}
                   </span>
                 </div>
 
                 {/* Days grid */}
                 <div className="overflow-x-auto">
-                  <div className="grid grid-cols-7 min-w-[700px]">
-                    {(["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] as DayOfWeek[]).map((day, i) => {
+                  <div className="grid grid-cols-7 min-w-175">
+                    {(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as DayOfWeek[]).map((day, i) => {
                       const dayMenu = menu?.days.find((d) => d.dayOfWeek === day);
                       return (
-                        <div key={day} className={`p-2 ${i < 6 ? "border-r border-slate-100 dark:border-slate-700" : ""}`}>
+                        <div key={day}
+                             className={`p-2 ${i < 6 ? "border-r border-slate-100 dark:border-slate-700" : ""}`}>
                           <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 text-center">
                             {DAY_LABELS[day].slice(0, 3)}
                           </p>
@@ -155,8 +166,9 @@ export default function MonthlyPage() {
                               const mealId = dayMenu?.[slot];
                               const meal = mealId ? mealsMap[mealId] : null;
                               return (
-                                <div key={slot} className="flex items-start gap-1 min-h-[22px]">
-                                  <span className="text-[10px] font-bold text-slate-300 dark:text-slate-600 w-3 shrink-0 mt-0.5">
+                                <div key={slot} className="flex items-start gap-1 min-h-5.5">
+                                  <span
+                                    className="text-[10px] font-bold text-slate-300 dark:text-slate-600 w-3 shrink-0 mt-0.5">
                                     {SLOT_LABELS[slot]}
                                   </span>
                                   {meal ? (
