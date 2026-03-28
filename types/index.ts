@@ -1,5 +1,6 @@
 export type MealType =
   | "carne_roja"
+  | "chancho"
   | "pollo"
   | "pescado"
   | "pasta"
@@ -47,6 +48,7 @@ export interface Meal {
   ingredients: Ingredient[];
   isBreakfast?: boolean;
   description?: string;
+  instructions?: string;
   imageUrl?: string;
   imageKey?: string;
   notes?: string;
@@ -84,6 +86,7 @@ export interface MonthlyMenu {
 
 export interface ProteinStats {
   carneRoja: number;
+  chancho: number;
   pollo: number;
   pescado: number;
   pasta: number;
@@ -99,6 +102,7 @@ export interface MenuGeneratorOptions {
 
 export const MEAL_TYPE_LABELS: Record<MealType, string> = {
   carne_roja: "Carne Roja",
+  chancho: "Chancho/Cerdo",
   pollo: "Pollo",
   pescado: "Pescado/Mariscos",
   pasta: "Pasta/Fideos",
@@ -109,6 +113,7 @@ export const MEAL_TYPE_LABELS: Record<MealType, string> = {
 
 export const MEAL_TYPE_COLORS: Record<MealType, string> = {
   carne_roja: "bg-red-100 text-red-700",
+  chancho: "bg-pink-100 text-pink-700",
   pollo: "bg-yellow-100 text-yellow-700",
   pescado: "bg-blue-100 text-blue-700",
   pasta: "bg-orange-100 text-orange-700",

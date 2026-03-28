@@ -30,12 +30,19 @@ ${mealLines}
 
 REGLAS OBLIGATORIAS:
 1. Distribución semanal en almuerzo (lunch):
-   - 2 a 3 días con tipo "carne_roja"
-   - exactamente 2 días con tipo "pollo"
+   - 2 a 3 días con tipo "carne_roja" o "chancho" (combinados, máximo 3 en total)
+   - 2 días con tipo "pollo"
    - 1 a 2 días con tipo "pescado"
    - Los días restantes: cualquier tipo disponible
 2. No repetir el mismo id de comida más de 1 vez en toda la semana por slot
-3. Máximo 2 días con tipo "arroz" en lunch, máximo 2 con "pasta", máximo 2 con "sopa"
+3. Máximo 2 días con tipo "arroz", máximo 2 con "pasta", máximo 2 con "sopa" en lunch
+4. ANTI-CONSECUTIVO obligatorio: nunca poner dos días seguidos del mismo grupo proteico:
+   - grupo "carne": carne_roja y chancho van juntos — jamás dos días seguidos de este grupo
+   - grupo "pollo": nunca dos días seguidos con pollo
+   - grupo "pescado": nunca dos días seguidos con pescado
+   - grupo "carbohidrato": arroz, pasta y sopa — no más de dos seguidos
+   Ejemplo válido: carne_roja → pollo → pescado → chancho → pollo → arroz → carne_roja
+   Ejemplo inválido: carne_roja → chancho → pollo → ... (carne_roja y chancho son el mismo grupo)
 
 ${slotsSection}
 

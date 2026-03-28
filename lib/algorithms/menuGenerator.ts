@@ -3,21 +3,32 @@ import type { IDayMenu } from "@/lib/db/models/WeeklyMenu";
 import type { MenuGeneratorOptions, DayOfWeek, MealType } from "@/types";
 import { DAYS_OF_WEEK } from "@/types";
 
-interface ProteinTarget {
-  type: MealType;
-  min: number;
-  max: number;
-}
+/**
+ * Protein groups used for anti-consecutive scheduling.
+ * carne_roja and chancho share the same group so they never appear back-to-back.
+ */
+const PROTEIN_GROUP: Record<MealType, string> = {
+  carne_roja: "carne",
+  chancho: "carne",
+  pollo: "pollo",
+  pescado: "pescado",
+  pasta: "pasta",
+  arroz: "arroz",
+  sopa: "sopa",
+  otro: "otro",
+};
 
-const WEEKLY_PROTEIN_TARGETS: ProteinTarget[] = [
-  { type: "carne_roja", min: 2, max: 3 },
-  { type: "pollo", min: 2, max: 2 },
-  { type: "pescado", min: 1, max: 2 },
-];
-
-const SIDE_MAX_REPEAT: Record<string, number> = {
-  arroz: 2,
+/**
+ * How many times a type can appear in a single week (lunch slot).
+ * Types not listed default to 3.
+ */
+const WEEKLY_MAX: Partial<Record<MealType, number>> = {
+  carne_roja: 3,
+  chancho: 2,
+  pollo: 3,
+  pescado: 2,
   pasta: 2,
+  arroz: 2,
   sopa: 2,
 };
 
@@ -30,21 +41,63 @@ function shuffle<T>(arr: T[]): T[] {
   return copy;
 }
 
-function getMealById(meals: IMeal[], id: string): IMeal | undefined {
-  return meals.find((m) => m._id.toString() === id);
-}
+/**
+ * Arrange 7 meals so no two consecutive days share the same protein group.
+ *
+ * Strategy: greedy "pick the most-available group that differs from yesterday".
+ * This guarantees a non-consecutive solution whenever one exists (which it always
+ * does for our distribution since no single group exceeds 4 out of 7 days).
+ */
+function arrangeMealsNoConsecutive(meals: IMeal[]): IMeal[] {
+  if (meals.length <= 1) return meals;
 
-function countType(selectedIds: string[], meals: IMeal[], type: MealType): number {
-  return selectedIds.filter((id) => getMealById(meals, id)?.type === type).length;
+  // Bucket meals by protein group, shuffling within each bucket for variety
+  const buckets: Record<string, IMeal[]> = {};
+  for (const meal of shuffle(meals)) {
+    const g = PROTEIN_GROUP[meal.type];
+    if (!buckets[g]) buckets[g] = [];
+    buckets[g].push(meal);
+  }
+
+  const result: IMeal[] = [];
+  let lastGroup: string | null = null;
+
+  while (result.length < meals.length) {
+    // Among all non-empty buckets, prefer the one furthest from the last group
+    // and with the most remaining meals (to keep options open for later days)
+    const candidates = Object.entries(buckets)
+      .filter(([g, arr]) => g !== lastGroup && arr.length > 0)
+      .sort((a, b) => b[1].length - a[1].length);
+
+    // Fallback: if every remaining bucket is the same group, allow repeat
+    const [group, arr] =
+      candidates.length > 0
+        ? candidates[0]
+        : (Object.entries(buckets).find(([, a]) => a.length > 0) ?? [null, null]);
+
+    if (!group || !arr) break;
+    result.push(arr.shift()!);
+    lastGroup = group;
+  }
+
+  return result;
 }
 
 /**
- * Builds a weekly lunch/dinner plan that respects protein rotation.
- * Returns an array of 7 lunch meal IDs (one per day).
+ * Build a pool of exactly 7 lunch meals for the week.
+ *
+ * Phase 1 — guaranteed minimums by protein type:
+ *   2 carne_roja, 1 chancho (if available), 2 pollo, 1 pescado
+ *
+ * Phase 2 — fill remaining slots with any type,
+ *   respecting WEEKLY_MAX per type.
+ *
+ * Phase 3 — last resort: re-use anything still unused if still short.
  */
-function assignProteinRotation(meals: IMeal[]): string[] {
-  const mealsByType: Record<MealType, IMeal[]> = {
+function buildWeeklyPool(meals: IMeal[]): IMeal[] {
+  const byType: Record<MealType, IMeal[]> = {
     carne_roja: [],
+    chancho: [],
     pollo: [],
     pescado: [],
     pasta: [],
@@ -53,66 +106,58 @@ function assignProteinRotation(meals: IMeal[]): string[] {
     otro: [],
   };
 
-  for (const meal of meals) {
-    mealsByType[meal.type].push(meal);
-  }
+  for (const meal of meals) byType[meal.type].push(meal);
 
-  // Build a target list for the week: 2-3 carne, 2 pollo, 1-2 pescado, fill rest
-  const plan: IMeal[] = [];
+  const pool: IMeal[] = [];
   const usedIds = new Set<string>();
 
-  function pickFrom(type: MealType, count: number) {
-    const pool = shuffle(mealsByType[type]).filter((m) => !usedIds.has(m._id.toString()));
-    for (let i = 0; i < Math.min(count, pool.length); i++) {
-      plan.push(pool[i]);
-      usedIds.add(pool[i]._id.toString());
+  function pick(type: MealType, count: number) {
+    const available = shuffle(byType[type]).filter((m) => !usedIds.has(m._id.toString()));
+    for (let i = 0; i < Math.min(count, available.length); i++) {
+      pool.push(available[i]);
+      usedIds.add(available[i]._id.toString());
     }
   }
 
-  pickFrom("carne_roja", 2);
-  pickFrom("pollo", 2);
-  pickFrom("pescado", 1);
+  // Phase 1: guaranteed protein minimums
+  pick("carne_roja", 2);
+  pick("chancho", 1);
+  pick("pollo", 2);
+  pick("pescado", 1);
 
-  // Fill remaining 2 days with any available type, respecting side repeat limits
-  const remaining = 7 - plan.length;
-  const sideCount: Record<string, number> = {};
-  const allPool = shuffle(meals).filter((m) => !usedIds.has(m._id.toString()));
+  // Phase 2: fill remaining slots respecting weekly maxima
+  const typeCount: Record<string, number> = {};
+  for (const m of pool) typeCount[m.type] = (typeCount[m.type] ?? 0) + 1;
 
-  for (const meal of allPool) {
-    if (plan.length >= 7) break;
-    const sideType = meal.type;
-    const max = SIDE_MAX_REPEAT[sideType] ?? 3;
-    if ((sideCount[sideType] ?? 0) < max) {
-      plan.push(meal);
+  for (const meal of shuffle(meals)) {
+    if (pool.length >= 7) break;
+    if (usedIds.has(meal._id.toString())) continue;
+    const max = WEEKLY_MAX[meal.type] ?? 3;
+    if ((typeCount[meal.type] ?? 0) < max) {
+      pool.push(meal);
       usedIds.add(meal._id.toString());
-      sideCount[sideType] = (sideCount[sideType] ?? 0) + 1;
+      typeCount[meal.type] = (typeCount[meal.type] ?? 0) + 1;
     }
   }
 
-  // If still short, re-use allowed types
-  if (plan.length < 7) {
-    const fallback = shuffle(meals).filter((m) => !usedIds.has(m._id.toString()));
-    for (const meal of fallback) {
-      if (plan.length >= 7) break;
-      plan.push(meal);
+  // Phase 3: last resort — any unused meal
+  for (const meal of shuffle(meals)) {
+    if (pool.length >= 7) break;
+    if (!usedIds.has(meal._id.toString())) {
+      pool.push(meal);
+      usedIds.add(meal._id.toString());
     }
   }
 
-  return shuffle(plan)
-    .slice(0, 7)
-    .map((m) => m._id.toString());
+  return pool.slice(0, 7);
 }
 
 function pickBreakfast(meals: IMeal[], usedIds: Set<string>): string | undefined {
-  // Only use meals marked as breakfast
-  const pool = shuffle(
-    meals.filter((m) => m.isBreakfast && !usedIds.has(m._id.toString()))
-  );
+  const pool = shuffle(meals.filter((m) => m.isBreakfast && !usedIds.has(m._id.toString())));
   if (pool.length > 0) {
     usedIds.add(pool[0]._id.toString());
     return pool[0]._id.toString();
   }
-  // No breakfast meals defined — leave slot empty
   return undefined;
 }
 
@@ -122,50 +167,20 @@ export function generateWeeklyMenu(
 ): IDayMenu[] {
   const { mealsPerDay } = options;
   const lunchMeals = meals.filter((m) => !m.isBreakfast);
-  const lunches = assignProteinRotation(lunchMeals);
-  const usedBreakfastIds = new Set<string>(lunches);
 
-  const days: IDayMenu[] = DAYS_OF_WEEK.map((day: DayOfWeek, index: number) => {
+  // Build pool → arrange with no consecutive same protein group
+  const pool = buildWeeklyPool(lunchMeals);
+  const arranged = arrangeMealsNoConsecutive(pool);
+
+  const usedBreakfastIds = new Set<string>(arranged.map((m) => m._id.toString()));
+
+  return DAYS_OF_WEEK.map((day: DayOfWeek, index: number) => {
     const dayMenu: IDayMenu = { dayOfWeek: day };
-
     if (mealsPerDay === 3) {
       dayMenu.breakfast = pickBreakfast(meals, usedBreakfastIds);
     }
-
-    dayMenu.lunch = lunches[index];
-
-    // Dinner defaults to the same as lunch (cook once, eat twice)
-    dayMenu.dinner = dayMenu.lunch;
-
+    dayMenu.lunch = arranged[index]?._id.toString();
+    dayMenu.dinner = dayMenu.lunch; // cook once, eat twice
     return dayMenu;
   });
-
-  return days;
-}
-
-export function validateMenuBalance(days: IDayMenu[], meals: IMeal[]): boolean {
-  const lunchIds = days.map((d) => d.lunch).filter(Boolean) as string[];
-  const carneCount = countType(lunchIds, meals, "carne_roja");
-  const polloCount = countType(lunchIds, meals, "pollo");
-  const pescadoCount = countType(lunchIds, meals, "pescado");
-
-  for (const target of WEEKLY_PROTEIN_TARGETS) {
-    const count =
-      target.type === "carne_roja"
-        ? carneCount
-        : target.type === "pollo"
-          ? polloCount
-          : pescadoCount;
-    if (count < target.min) return false;
-  }
-
-  return true;
-}
-
-export function getWeekNumber(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }

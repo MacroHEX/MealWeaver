@@ -10,6 +10,7 @@ export interface IMeal {
   ingredients: { name: string; quantity: string }[];
   isBreakfast?: boolean; // true = only used in breakfast slot
   description?: string;
+  instructions?: string;
   imageUrl?: string;
   imageKey?: string;
   notes?: string;
@@ -33,11 +34,12 @@ const MealSchema = new Schema<IMeal>(
     type: {
       type: String,
       required: true,
-      enum: ["carne_roja", "pollo", "pescado", "pasta", "arroz", "sopa", "otro"],
+      enum: ["carne_roja", "chancho", "pollo", "pescado", "pasta", "arroz", "sopa", "otro"],
     },
     ingredients: { type: [IngredientSchema], default: [] },
     isBreakfast: { type: Boolean, default: false },
     description: String,
+    instructions: String,
     imageUrl: String,
     imageKey: String,
     notes: String,
