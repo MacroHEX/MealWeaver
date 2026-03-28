@@ -78,7 +78,7 @@ export default function ShoppingPage() {
   }
 
   function handlePriceChange(name: string, value: string) {
-    const num = parseFloat(value) || 0;
+    const num = parseInt(value, 10) || 0;
     const updated = { ...prices, [name]: num };
     setPrices(updated);
 
@@ -212,16 +212,16 @@ export default function ShoppingPage() {
 
                 {/* Price input */}
                 <div className="flex items-center gap-1 shrink-0">
-                  <span className="text-xs text-slate-400">$</span>
+                  <span className="text-xs font-medium text-slate-400">₲</span>
                   <input
                     type="number"
                     min="0"
-                    step="1"
+                    step="100"
                     placeholder="0"
                     value={prices[item.name] || ""}
                     onChange={(e) => handlePriceChange(item.name, e.target.value)}
                     onClick={(e) => e.stopPropagation()}
-                    className="w-20 px-2 py-1 text-sm text-right rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-28 px-2 py-1 text-sm text-right rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
               </div>
@@ -234,14 +234,14 @@ export default function ShoppingPage() {
       {hasPrices && (
         <div className="flex flex-col gap-1.5 px-1">
           <div className="flex justify-between text-sm text-slate-500 dark:text-slate-400">
-            <span>Gastado</span>
+            <span>Comprado</span>
             <span className="font-medium text-emerald-600 dark:text-emerald-400">
-              ${totalSpent.toLocaleString("es-AR")}
+              ₲ {totalSpent.toLocaleString("es-PY")}
             </span>
           </div>
           <div className="flex justify-between text-sm font-semibold text-slate-700 dark:text-slate-200 border-t border-slate-200 dark:border-slate-700 pt-1.5">
             <span>Total estimado</span>
-            <span>${totalAll.toLocaleString("es-AR")}</span>
+            <span>₲ {totalAll.toLocaleString("es-PY")}</span>
           </div>
         </div>
       )}
