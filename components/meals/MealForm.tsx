@@ -189,6 +189,20 @@ export function MealForm({ initial, onSubmit, onCancel, loading }: MealFormProps
         />
       </div>
 
+      <div className="flex flex-col gap-1">
+        <label htmlFor="meal-instructions" className="text-sm font-medium text-slate-700 dark:text-slate-200">
+          Instrucciones de preparación
+        </label>
+        <textarea
+          id="meal-instructions"
+          rows={4}
+          placeholder={"1. Calentar aceite en la sartén...\n2. Agregar los ingredientes...\n3. Cocinar por 20 minutos..."}
+          value={form.instructions ?? ""}
+          onChange={(e) => update("instructions", e.target.value)}
+          className="px-3 py-2 rounded-xl border text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-y"
+        />
+      </div>
+
       <ImageUpload
         currentUrl={form.imageUrl}
         currentKey={form.imageKey}

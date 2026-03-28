@@ -4,12 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { useState } from "react";
-import { UtensilsCrossed, CalendarDays, CalendarRange, LogOut, Leaf, Home, ShoppingCart, UserCircle } from "lucide-react";
+import { UtensilsCrossed, CalendarDays, CalendarRange, LogOut, Leaf, Home, ShoppingCart, UserCircle, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { HouseholdModal } from "@/components/common/HouseholdModal";
 
 const navItems = [
+  { href: "/dashboard", label: "Inicio", icon: LayoutDashboard },
   { href: "/meals", label: "Mis Comidas", icon: UtensilsCrossed },
   { href: "/weekly", label: "Semana", icon: CalendarDays },
   { href: "/monthly", label: "Mes", icon: CalendarRange },
@@ -28,7 +29,7 @@ export function Navbar() {
     <>
       <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link href="/meals" className="flex items-center gap-2">
+          <Link href="/dashboard" className="flex items-center gap-2">
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-500">
               <Leaf className="w-4 h-4 text-white" strokeWidth={2.5} />
             </div>
