@@ -1,21 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth/auth";
+import { getAuth } from "@/lib/auth/getAuth";
 import { connectDB } from "@/lib/db/mongoose";
 import Household from "@/lib/db/models/Household";
 import User from "@/lib/db/models/User";
+import { issueToken } from "@/lib/auth/issueToken";
 
 function generateInviteCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
 /** GET — fetch current user's household info + member names */
-export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  if (!session.user.householdId) return NextResponse.json(null);
+export async function GET(req: NextRequest) {
+  const authSession = await getAuth(req);
+  if (!authSession) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!authSession.user.householdId) return NextResponse.json(null);
 
   await connectDB();
-  const household = await Household.findById(session.user.householdId).lean();
+  const household = await Household.findById(authSession.user.householdId).lean();
   if (!household) return NextResponse.json(null);
 
   const members = await User.find({ _id: { $in: household.members } })
@@ -27,15 +28,15 @@ export async function GET() {
 
 /** POST — create a new household */
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const authSession = await getAuth(req);
+  if (!authSession) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const { name } = await req.json();
   if (!name?.trim()) return NextResponse.json({ error: "El nombre es requerido" }, { status: 400 });
 
   await connectDB();
 
-  if (session.user.householdId) {
+  if (authSession.user.householdId) {
     return NextResponse.json({ error: "Ya perteneces a un hogar" }, { status: 409 });
   }
 
@@ -47,31 +48,43 @@ export async function POST(req: NextRequest) {
 
   const household = await Household.create({
     name: name.trim(),
-    members: [session.user.id],
+    members: [authSession.user.id],
     inviteCode,
-    createdBy: session.user.id,
+    createdBy: authSession.user.id,
   });
 
-  await User.findByIdAndUpdate(session.user.id, { householdId: household._id.toString() });
+  const householdId = household._id.toString();
+  await User.findByIdAndUpdate(authSession.user.id, { householdId });
+
+  // Issue a new token with the updated householdId (for mobile clients)
+  const token = await issueToken({
+    userId: authSession.user.id,
+    email: authSession.user.email,
+    name: authSession.user.name,
+    householdId,
+  });
 
   return NextResponse.json({
-    householdId: household._id.toString(),
+    householdId,
     name: household.name,
     inviteCode: household.inviteCode,
+    token,
   }, { status: 201 });
 }
 
 /** DELETE — delete the household (only creator) */
-export async function DELETE() {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-  if (!session.user.householdId) return NextResponse.json({ error: "No perteneces a un hogar" }, { status: 400 });
+export async function DELETE(req: NextRequest) {
+  const authSession = await getAuth(req);
+  if (!authSession) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!authSession.user.householdId) {
+    return NextResponse.json({ error: "No perteneces a un hogar" }, { status: 400 });
+  }
 
   await connectDB();
-  const household = await Household.findById(session.user.householdId);
+  const household = await Household.findById(authSession.user.householdId);
   if (!household) return NextResponse.json({ error: "Hogar no encontrado" }, { status: 404 });
 
-  if (household.createdBy !== session.user.id) {
+  if (household.createdBy !== authSession.user.id) {
     return NextResponse.json({ error: "Solo el creador puede eliminar el hogar" }, { status: 403 });
   }
 
@@ -79,5 +92,13 @@ export async function DELETE() {
   await User.updateMany({ householdId: household._id.toString() }, { householdId: null });
   await Household.findByIdAndDelete(household._id);
 
-  return NextResponse.json({ message: "Hogar eliminado" });
+  // Issue a new token with householdId cleared (for mobile clients)
+  const token = await issueToken({
+    userId: authSession.user.id,
+    email: authSession.user.email,
+    name: authSession.user.name,
+    householdId: null,
+  });
+
+  return NextResponse.json({ message: "Hogar eliminado", token });
 }

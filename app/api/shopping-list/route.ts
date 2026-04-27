@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth/auth";
+import { getAuth } from "@/lib/auth/getAuth";
 import { getScopeId } from "@/lib/auth/getScopeId";
 import { connectDB } from "@/lib/db/mongoose";
 import WeeklyMenu from "@/lib/db/models/WeeklyMenu";
@@ -17,15 +17,15 @@ export interface ShoppingItem {
  * Aggregates all ingredients from the meals in a weekly menu.
  */
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const authSession = await getAuth(req);
+  if (!authSession) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const year = Number(searchParams.get("year"));
   const week = Number(searchParams.get("week"));
 
   await connectDB();
-  const scopeId = getScopeId(session);
+  const scopeId = getScopeId(authSession.user);
 
   const menu = await WeeklyMenu.findOne({ scopeId, year, week }).lean();
   if (!menu) return NextResponse.json([]);

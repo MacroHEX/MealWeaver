@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth/auth";
+import { getAuth } from "@/lib/auth/getAuth";
 import { UTApi } from "uploadthing/server";
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const authSession = await getAuth(req);
+  if (!authSession) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   if (!process.env.UPLOADTHING_TOKEN) {
     return NextResponse.json({ error: "Almacenamiento de imágenes no configurado" }, { status: 503 });
@@ -40,8 +40,8 @@ export async function POST(req: NextRequest) {
 
 /** DELETE /api/upload?key=xxx — delete an image from UploadThing */
 export async function DELETE(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const authSession = await getAuth(req);
+  if (!authSession) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const key = new URL(req.url).searchParams.get("key");
   if (!key) return NextResponse.json({ error: "Key requerida" }, { status: 400 });

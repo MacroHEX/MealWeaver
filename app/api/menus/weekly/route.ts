@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth/auth";
+import { getAuth } from "@/lib/auth/getAuth";
 import { getScopeId } from "@/lib/auth/getScopeId";
 import { connectDB } from "@/lib/db/mongoose";
 import WeeklyMenu from "@/lib/db/models/WeeklyMenu";
@@ -7,26 +7,26 @@ import Meal from "@/lib/db/models/Meal";
 import { generateWeeklyMenu } from "@/lib/algorithms/menuGenerator";
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const authSession = await getAuth(req);
+  if (!authSession) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const year = Number(searchParams.get("year"));
   const week = Number(searchParams.get("week"));
 
   await connectDB();
-  const scopeId = getScopeId(session);
+  const scopeId = getScopeId(authSession.user);
   const menu = await WeeklyMenu.findOne({ scopeId, year, week }).lean();
   return NextResponse.json(menu ?? null);
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const authSession = await getAuth(req);
+  if (!authSession) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const { year, week, mealsPerDay = 3 } = await req.json();
   await connectDB();
-  const scopeId = getScopeId(session);
+  const scopeId = getScopeId(authSession.user);
 
   const meals = await Meal.find({ scopeId }).lean();
   if (meals.length < 5) {
@@ -48,12 +48,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const authSession = await getAuth(req);
+  if (!authSession) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const { year, week, prices } = await req.json();
   await connectDB();
-  const scopeId = getScopeId(session);
+  const scopeId = getScopeId(authSession.user);
 
   const menu = await WeeklyMenu.findOneAndUpdate(
     { scopeId, year, week },
@@ -66,12 +66,12 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const authSession = await getAuth(req);
+  if (!authSession) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const { year, week, days } = await req.json();
   await connectDB();
-  const scopeId = getScopeId(session);
+  const scopeId = getScopeId(authSession.user);
 
   const menu = await WeeklyMenu.findOneAndUpdate(
     { scopeId, year, week },

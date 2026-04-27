@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth/auth";
+import { getAuth } from "@/lib/auth/getAuth";
 import { connectDB } from "@/lib/db/mongoose";
 import Household from "@/lib/db/models/Household";
 import User from "@/lib/db/models/User";
+import { issueToken } from "@/lib/auth/issueToken";
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const authSession = await getAuth(req);
+  if (!authSession) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const { inviteCode } = await req.json();
   if (!inviteCode?.trim()) {
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
 
   await connectDB();
 
-  if (session.user.householdId) {
+  if (authSession.user.householdId) {
     return NextResponse.json({ error: "Ya perteneces a un hogar. Primero debes salir." }, { status: 409 });
   }
 
@@ -24,18 +25,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Código de invitación inválido" }, { status: 404 });
   }
 
-  if (household.members.includes(session.user.id)) {
+  if (household.members.includes(authSession.user.id)) {
     return NextResponse.json({ error: "Ya eres miembro de este hogar" }, { status: 409 });
   }
 
   await Household.findByIdAndUpdate(household._id, {
-    $addToSet: { members: session.user.id },
+    $addToSet: { members: authSession.user.id },
   });
-  await User.findByIdAndUpdate(session.user.id, { householdId: household._id.toString() });
+
+  const householdId = household._id.toString();
+  await User.findByIdAndUpdate(authSession.user.id, { householdId });
+
+  // Issue a new token with the updated householdId (for mobile clients)
+  const token = await issueToken({
+    userId: authSession.user.id,
+    email: authSession.user.email,
+    name: authSession.user.name,
+    householdId,
+  });
 
   return NextResponse.json({
-    householdId: household._id.toString(),
+    householdId,
     name: household.name,
     inviteCode: household.inviteCode,
+    token,
   });
 }
