@@ -15,6 +15,9 @@ import {
   Copy,
   CalendarDays,
 } from "lucide-react";
+import { toast } from "sonner";
+import { ShoppingListSkeleton } from "@/components/ui/Skeleton";
+import { PageTransition } from "@/components/common/PageTransition";
 
 const today = new Date();
 const currentYear = today.getFullYear();
@@ -103,6 +106,7 @@ export default function ShoppingPage() {
       .join("\n");
     navigator.clipboard.writeText(text);
     setCopied(true);
+    toast.success("Lista copiada al portapapeles");
     setTimeout(() => setCopied(false), 2000);
   }
 
@@ -123,11 +127,11 @@ export default function ShoppingPage() {
   const hasPrices = totalAll > 0;
 
   return (
-    <div className="flex flex-col gap-6 max-w-2xl mx-auto w-full">
+    <PageTransition className="flex flex-col gap-6 max-w-2xl mx-auto w-full">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100">
             Lista de Compras
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
@@ -171,9 +175,7 @@ export default function ShoppingPage() {
 
       {/* List */}
       {isLoading ? (
-        <div className="flex items-center justify-center h-48">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500" />
-        </div>
+        <ShoppingListSkeleton />
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-48 gap-3 text-slate-400 dark:text-slate-500">
           <ShoppingCart className="w-12 h-12" strokeWidth={1} />
@@ -254,6 +256,6 @@ export default function ShoppingPage() {
           Desmarcar todo
         </button>
       )}
-    </div>
+    </PageTransition>
   );
 }

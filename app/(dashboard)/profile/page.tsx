@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { User, Settings, Check } from "lucide-react";
+import { toast } from "sonner";
+import { PageTransition } from "@/components/common/PageTransition";
 
 interface UserProfile {
   _id: string;
@@ -62,14 +64,16 @@ export default function ProfilePage() {
       queryClient.invalidateQueries({ queryKey: ["user-profile"] });
       update({ name });
       setSaved(true);
+      toast.success("Perfil actualizado");
       setTimeout(() => setSaved(false), 2500);
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   return (
-    <div className="flex flex-col gap-6 max-w-lg mx-auto w-full">
+    <PageTransition className="flex flex-col gap-6 max-w-lg mx-auto w-full">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100">
           Mi Perfil
         </h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
@@ -145,6 +149,6 @@ export default function ProfilePage() {
           "Guardar cambios"
         )}
       </Button>
-    </div>
+    </PageTransition>
   );
 }

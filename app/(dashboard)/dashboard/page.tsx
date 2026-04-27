@@ -28,6 +28,8 @@ import {
   ListMinus,
   ChefHat,
 } from "lucide-react";
+import { TodayMealSkeleton } from "@/components/ui/Skeleton";
+import { PageTransition } from "@/components/common/PageTransition";
 
 const TODAY = new Date();
 const JS_DAY_TO_DOW: Record<number, DayOfWeek> = {
@@ -256,11 +258,11 @@ export default function DashboardPage() {
   });
 
   return (
-    <div className="flex flex-col gap-6 pb-4">
+    <PageTransition className="flex flex-col gap-6 pb-4">
       {/* Greeting */}
       <div>
         <p className="text-sm text-slate-500 dark:text-slate-400 capitalize">{dateStr}</p>
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-0.5">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100 mt-0.5">
           {getGreeting()}
           {firstName ? `, ${firstName}` : ""}
         </h1>
@@ -279,9 +281,7 @@ export default function DashboardPage() {
         </div>
 
         {menuLoading ? (
-          <div className="flex items-center justify-center h-40">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-500" />
-          </div>
+          <TodayMealSkeleton />
         ) : !menu ? (
           <Card className="flex flex-col items-center justify-center py-10 gap-3 text-center px-6">
             <CalendarDays
@@ -419,6 +419,6 @@ export default function DashboardPage() {
           </Link>
         </div>
       </section>
-    </div>
+    </PageTransition>
   );
 }

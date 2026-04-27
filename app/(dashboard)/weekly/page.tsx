@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/Button";
 import { getWeekNumber, getWeekStartEnd, formatDate } from "@/lib/utils";
 import { Wand2, CalendarX, ChevronLeft, ChevronRight, CalendarDays, ShoppingCart, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
+import { WeeklyGridSkeleton, WeeklyDaySkeleton } from "@/components/ui/Skeleton";
+import { PageTransition } from "@/components/common/PageTransition";
 
 const today = new Date();
 const currentYear = today.getFullYear();
@@ -60,8 +63,14 @@ export default function WeeklyPage() {
         body: JSON.stringify({ year, week, mealsPerDay: 3 }),
       });
       const data = await res.json();
-      if (!res.ok) alert(data.error ?? "Error generando menú");
-      else queryClient.invalidateQueries({ queryKey: ["weekly-menu", year, week] });
+      if (!res.ok) {
+        toast.error(data.error ?? "Error generando menú");
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["weekly-menu", year, week] });
+        toast.success("Menú generado");
+      }
+    } catch {
+      toast.error("Error de conexión al generar menú");
     } finally {
       setGenerating(false);
     }
@@ -76,8 +85,14 @@ export default function WeeklyPage() {
         body: JSON.stringify({ year, week, mealsPerDay: 3 }),
       });
       const data = await res.json();
-      if (!res.ok) alert(data.error ?? "Error generando menú con IA");
-      else queryClient.invalidateQueries({ queryKey: ["weekly-menu", year, week] });
+      if (!res.ok) {
+        toast.error(data.error ?? "Error generando menú con IA");
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["weekly-menu", year, week] });
+        toast.success("Menú generado con IA");
+      }
+    } catch {
+      toast.error("Error de conexión con la IA");
     } finally {
       setGeneratingAI(false);
     }
@@ -127,11 +142,11 @@ export default function WeeklyPage() {
     acc + (d.breakfast ? 1 : 0) + (d.lunch ? 1 : 0) + (d.dinner ? 1 : 0), 0) ?? 0;
 
   return (
-    <div className="flex flex-col gap-6 flex-1">
+    <PageTransition className="flex flex-col gap-6 flex-1">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100">
             Planificador Semanal
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
@@ -177,9 +192,10 @@ export default function WeeklyPage() {
 
       {/* Grid */}
       {isLoading ? (
-        <div className="flex items-center justify-center h-48">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500" />
-        </div>
+        <>
+          <WeeklyDaySkeleton />
+          <WeeklyGridSkeleton />
+        </>
       ) : !menu ? (
         <div className="flex flex-col items-center justify-center h-48 gap-4 text-slate-400">
           <CalendarX className="w-12 h-12" strokeWidth={1} />
@@ -230,6 +246,6 @@ export default function WeeklyPage() {
           ))}
         </div>
       </Modal>
-    </div>
+    </PageTransition>
   );
 }

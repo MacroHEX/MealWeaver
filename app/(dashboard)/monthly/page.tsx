@@ -8,6 +8,9 @@ import {Button} from "@/components/ui/Button";
 import {Card} from "@/components/ui/Card";
 import {formatMonth, getWeekNumber, getWeeksInMonth, getWeekStartEnd} from "@/lib/utils";
 import {CalendarRange, ChevronLeft, ChevronRight, Wand2} from "lucide-react";
+import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { PageTransition } from "@/components/common/PageTransition";
 
 const today = new Date();
 
@@ -49,8 +52,14 @@ export default function MonthlyPage() {
         body: JSON.stringify({year, month}),
       });
       const result = await res.json();
-      if (!res.ok) alert(result.error ?? "Error generando menú");
-      else queryClient.invalidateQueries({queryKey: ["monthly-menus", year, month]});
+      if (!res.ok) {
+        toast.error(result.error ?? "Error generando menú");
+      } else {
+        queryClient.invalidateQueries({queryKey: ["monthly-menus", year, month]});
+        toast.success("Menú mensual generado");
+      }
+    } catch {
+      toast.error("Error de conexión al generar menú");
     } finally {
       setGenerating(false);
     }
@@ -74,11 +83,11 @@ export default function MonthlyPage() {
   const isCurrentMonth = year === today.getFullYear() && month === today.getMonth() + 1;
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageTransition className="flex flex-col gap-6">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100">
             Planificador Mensual
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
@@ -118,8 +127,10 @@ export default function MonthlyPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center h-48">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"/>
+        <div className="flex flex-col gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-40" />
+          ))}
         </div>
       ) : (
         <div className="flex flex-col gap-4">
@@ -195,6 +206,6 @@ export default function MonthlyPage() {
           })}
         </div>
       )}
-    </div>
+    </PageTransition>
   );
 }

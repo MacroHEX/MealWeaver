@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Home, UserPlus, Copy, Check, LogOut, Trash2, Users } from "lucide-react";
+import { toast } from "sonner";
 
 interface HouseholdData {
   _id: string;
@@ -59,8 +60,12 @@ export function HouseholdModal({ open, onClose }: HouseholdModalProps) {
       setTab("view");
       setHouseholdName("");
       setApiError("");
+      toast.success("Hogar creado");
     },
-    onError: (e: Error) => setApiError(e.message),
+    onError: (e: Error) => {
+      setApiError(e.message);
+      toast.error(e.message);
+    },
   });
 
   const joinMutation = useMutation({
@@ -79,24 +84,35 @@ export function HouseholdModal({ open, onClose }: HouseholdModalProps) {
       setTab("view");
       setInviteCode("");
       setApiError("");
+      toast.success("Te uniste al hogar");
     },
-    onError: (e: Error) => setApiError(e.message),
+    onError: (e: Error) => {
+      setApiError(e.message);
+      toast.error(e.message);
+    },
   });
 
   const leaveMutation = useMutation({
     mutationFn: () => fetch("/api/household/leave", { method: "POST" }).then((r) => r.json()),
-    onSuccess: () => refreshSession(null),
+    onSuccess: () => {
+      refreshSession(null);
+      toast.success("Saliste del hogar");
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: () => fetch("/api/household", { method: "DELETE" }).then((r) => r.json()),
-    onSuccess: () => refreshSession(null),
+    onSuccess: () => {
+      refreshSession(null);
+      toast.success("Hogar eliminado");
+    },
   });
 
   function copyCode() {
     if (!household?.inviteCode) return;
     navigator.clipboard.writeText(household.inviteCode);
     setCopied(true);
+    toast.success("Código copiado");
     setTimeout(() => setCopied(false), 2000);
   }
 

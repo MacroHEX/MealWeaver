@@ -9,6 +9,10 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { UtensilsCrossed, Plus } from "lucide-react";
+import { toast } from "sonner";
+import { MealCardSkeleton } from "@/components/ui/Skeleton";
+import { PageTransition } from "@/components/common/PageTransition";
+import { motion, AnimatePresence } from "framer-motion";
 
 async function fetchMeals(type?: string, search?: string): Promise<Meal[]> {
   const params = new URLSearchParams();
@@ -37,7 +41,11 @@ export default function MealsPage() {
       const res = await fetch(`/api/meals/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Error eliminando");
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["meals"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["meals"] });
+      toast.success("Comida eliminada");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   function openCreate() {
@@ -52,28 +60,32 @@ export default function MealsPage() {
 
   async function handleFormSubmit(data: Partial<Meal>) {
     setFormLoading(true);
+    const isEdit = !!editingMeal?._id;
     try {
-      const url = editingMeal?._id ? `/api/meals/${editingMeal._id}` : "/api/meals";
-      const method = editingMeal?._id ? "PUT" : "POST";
+      const url = isEdit ? `/api/meals/${editingMeal._id}` : "/api/meals";
+      const method = isEdit ? "PUT" : "POST";
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error("Error guardando");
+      if (!res.ok) throw new Error("Error guardando comida");
       await queryClient.invalidateQueries({ queryKey: ["meals"] });
       setModalOpen(false);
+      toast.success(isEdit ? "Comida actualizada" : "Comida creada");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error guardando comida");
     } finally {
       setFormLoading(false);
     }
   }
 
   return (
-    <div className="flex flex-col gap-6 flex-1">
+    <PageTransition className="flex flex-col gap-6 flex-1">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100">
             Mis Comidas
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
@@ -87,17 +99,17 @@ export default function MealsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
         <Input
           placeholder="Buscar por nombre..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-56"
+          className="w-full sm:w-56"
         />
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap snap-x">
           <button
             onClick={() => setFilterType("")}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            className={`shrink-0 snap-start px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
               filterType === ""
                 ? "bg-emerald-500 text-white"
                 : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
@@ -109,7 +121,7 @@ export default function MealsPage() {
             <button
               key={type}
               onClick={() => setFilterType(type)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              className={`shrink-0 snap-start px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                 filterType === type
                   ? "bg-emerald-500 text-white"
                   : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
@@ -123,8 +135,10 @@ export default function MealsPage() {
 
       {/* Grid */}
       {isLoading ? (
-        <div className="flex-1 flex items-center justify-center min-h-50">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <MealCardSkeleton key={i} />
+          ))}
         </div>
       ) : meals.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-48 gap-4 text-slate-400">
@@ -143,14 +157,24 @@ export default function MealsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {meals.map((meal) => (
-            <MealCard
-              key={meal._id}
-              meal={meal}
-              onEdit={openEdit}
-              onDelete={(id) => deleteMutation.mutate(id)}
-            />
-          ))}
+          <AnimatePresence mode="popLayout">
+            {meals.map((meal) => (
+              <motion.div
+                key={meal._id}
+                layout
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.18 }}
+              >
+                <MealCard
+                  meal={meal}
+                  onEdit={openEdit}
+                  onDelete={(id) => deleteMutation.mutate(id)}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       )}
 
@@ -167,6 +191,6 @@ export default function MealsPage() {
           loading={formLoading}
         />
       </Modal>
-    </div>
+    </PageTransition>
   );
 }
