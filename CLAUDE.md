@@ -4,6 +4,8 @@
 
 **MealWeaver** es una aplicación web/mobile para planificar menús semanales y mensuales de forma inteligente, priorizando una alimentación saludable y balanceada. Los usuarios pueden crear su lista de comidas favoritas y la app genera automáticamente menús variados, evitando repeticiones y balanceando tipos de proteínas y acompañamientos.
 
+**Arquitectura híbrida**: el backend Next.js sirve a la **web** (con cookies NextAuth) y al cliente **Flutter** (con JWT Bearer) usando los mismos endpoints `/api/*`. Helper unificado en `lib/auth/getAuth.ts`. Plan y referencia de API para Flutter: ver [`CLAUDE_FLUTTER.md`](./CLAUDE_FLUTTER.md).
+
 ---
 
 ## Stack Tecnológico
@@ -315,9 +317,33 @@ export const ComponentName: React.FC<ComponentProps> = ({
 - [x] **Lista de compras**: auto-generada desde el menú semanal, agrupar por tipo de ingrediente, marcar como comprado, copiar al portapapeles
 - [x] **Perfil de usuario**: editar nombre, preferencias (restricciones alimentarias, comidas por día)
 
-### Fase 3 (Actual):
-- [ ] **Integración IA con Google Gemini**: recomendaciones inteligentes de menús, sugerencias personalizadas basadas en dieta proteica — usar modelo `gemini-2.5-flash-lite` (más ligero y económico)
-- [ ] **Planificador mensual**: vista 4 semanas, generar menú mensual completo
+### Fase 3 — COMPLETADA ✅ (28/03/2026)
+- [x] **Integración IA con Google Gemini**: `POST /api/menus/gemini` — modelo `gemini-2.5-flash-lite`
+- [x] **Planificador mensual**: `GET/POST /api/menus/monthly`, vista 4 semanas + generación completa del mes
+- [x] **Lista de compras en guaraníes (₲)**: precios por ingrediente con `PATCH /api/menus/weekly`
+
+### Fase 4 — COMPLETADA ✅ (03/05/2026) — API híbrida mobile
+- [x] **Auth dual**: cookies para web + JWT Bearer para mobile, vía `lib/auth/getAuth.ts` (helper unificado)
+- [x] `POST /api/auth/mobile-login` — login que devuelve `{token, user}` (JWT HS256, 30 días)
+- [x] `POST /api/auth/register` reescrito — auto-loguea, devuelve `{token, user}` igual que mobile-login
+- [x] `GET /api/auth/me` — validar token al iniciar la app mobile
+- [x] **Token reissue**: `POST/DELETE /api/household` y `/join`/`/leave` reemiten token con `householdId` actualizado
+- [x] **Proxy** (`proxy.ts`) — excluye `/api/*` del redirect (cada handler maneja su auth) y agrega CORS + `OPTIONS` preflight
+- [x] **CORS configurable** vía `ALLOWED_ORIGINS` env var
+- [x] **Suite end-to-end** (`scripts/test-mobile-api.sh`) — 28 assertions cubriendo todos los endpoints con Bearer
+
+### Fase 5 — App Flutter (mobile, repo aparte)
+- [ ] Inicializar repo Flutter con `CLAUDE_FLUTTER.md` como `CLAUDE.md` raíz
+- [ ] Fase 0: DioClient + AuthInterceptor (con captura de token reissue) + GoRouter guard
+- [ ] Fase 1: Login/Register
+- [ ] Fase 2: Modelos + servicios
+- [ ] Fase 3: Widgets base + theme
+- [ ] Fase 4-9: meals, dashboard, semanal, mensual, compras, hogar, perfil
+- [ ] Fase 10: pulido (animaciones, empty states, PDF export, tests)
+
+> **Plan completo y referencia de API para Flutter**: ver `CLAUDE_FLUTTER.md`.
+
+### Backlog (post-mobile)
 - [ ] **Exportar menú**: PDF con diseño / copiar al portapapeles
 - [ ] **Estadísticas**: qué proteína se consume más, variedad semanal, resumen nutricional
 - [ ] **Notificaciones / recordatorios**: recordar planificar la semana
@@ -340,7 +366,39 @@ NEXT_PUBLIC_GEMINI_API_KEY=<your-google-gemini-api-key>
 
 # UploadThing v7 (opcional — imagen de comidas)
 UPLOADTHING_TOKEN=<your-uploadthing-token>
+
+# CORS — orígenes permitidos para /api/* (comma-separated). Usar "*" para permitir todos (eco del origin).
+# Native Flutter (iOS/Android) no envía Origin, así que esto solo aplica a Flutter Web o llamadas cross-origin desde browsers.
+ALLOWED_ORIGINS=http://localhost:3000
 ```
+
+---
+
+## API para clientes mobile (Flutter)
+
+La API es híbrida: la web usa NextAuth con cookies httpOnly, mobile usa JWT Bearer tokens. Todos los endpoints de `/api/*` aceptan ambos via `lib/auth/getAuth.ts`.
+
+### Auth flow mobile
+
+1. **Registro**: `POST /api/auth/register` con `{name, email, password}` → `{token, user}`.
+2. **Login**: `POST /api/auth/mobile-login` con `{email, password}` → `{token, user}`.
+3. **Validar token al iniciar app**: `GET /api/auth/me` con `Authorization: Bearer <token>` → `{user}`.
+4. **Logout**: descartar el token en el cliente (no hay endpoint server-side; los JWT son stateless).
+
+### Importante sobre el JWT
+- El JWT contiene `householdId`. Si el usuario entra/sale/crea/borra un hogar, el server reemite un nuevo token en la respuesta — el cliente debe **reemplazar** el token guardado.
+- Endpoints que reemiten token: `POST /api/household`, `POST /api/household/join`, `POST /api/household/leave`, `DELETE /api/household`.
+- Expiración: 30 días. Si expira, el cliente debe re-loguear.
+
+### Endpoints disponibles
+- `GET/POST/PUT/DELETE /api/meals` y `/api/meals/[id]`
+- `GET/POST/PUT/PATCH /api/menus/weekly` (PATCH actualiza precios)
+- `GET/POST /api/menus/monthly`
+- `POST /api/menus/gemini` (genera con IA)
+- `GET /api/shopping-list?year=&week=`
+- `GET/POST/DELETE /api/household`, `POST /api/household/join`, `POST /api/household/leave`
+- `GET/PUT /api/user`
+- `POST/DELETE /api/upload` (multipart/form-data con campo `file`)
 
 ---
 
@@ -366,5 +424,5 @@ UPLOADTHING_TOKEN=<your-uploadthing-token>
 
 ---
 
-**Última actualización**: 27/03/2026 — Fase 3 iniciada
+**Última actualización**: 03/05/2026 — Fase 4 (API mobile) completada, plan Flutter listo en `CLAUDE_FLUTTER.md`
 **Autor**: Martin Medina (MacroHEX)

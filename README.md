@@ -1,36 +1,159 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MealWeaver
 
-## Getting Started
+Aplicación web para planificar menús semanales y mensuales priorizando una alimentación balanceada (rotación proteica, sin repeticiones, ingredientes compartidos en hogar). Web hecha en **Next.js 16** con un backend REST que también sirve a la app **Flutter** (en repo aparte).
 
-First, run the development server:
+> Stack: Next.js 16.2.1 · React 19.2.4 · TypeScript 5 · Tailwind CSS 4 · NextAuth v5 · MongoDB Atlas + Mongoose · UploadThing v7 · Google Gemini · pnpm
+
+---
+
+## Quick start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.local.example .env.local   # editar valores (ver "Variables de entorno")
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+App en [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Variables de entorno
 
-## Learn More
+Crear `.env.local` con:
 
-To learn more about Next.js, take a look at the following resources:
+```env
+MONGODB_URI=mongodb+srv://<user>:<pass>@cluster.mongodb.net/meal-weaver?retryWrites=true&w=majority
+MONGODB_DB_NAME=meal-weaver
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# NextAuth v5 — el mismo secret firma los JWT mobile
+AUTH_SECRET=<openssl rand -base64 32>
+NEXTAUTH_URL=http://localhost:3000
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# Opcionales
+NEXT_PUBLIC_GEMINI_API_KEY=<key>     # /api/menus/gemini
+UPLOADTHING_TOKEN=<token>            # /api/upload — sin esto las imágenes degradan a 503
 
-## Deploy on Vercel
+# CORS para clientes cross-origin (Flutter Web). Native iOS/Android no lo necesita.
+ALLOWED_ORIGINS=http://localhost:3000
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Arquitectura
+
+App híbrida: **una sola API**, dos clientes.
+
+- **Web (este repo)** — Next.js + NextAuth con cookie httpOnly.
+- **Mobile (repo Flutter aparte)** — JWT Bearer firmado con `AUTH_SECRET`.
+
+`lib/auth/getAuth.ts` es el helper unificado: chequea cookie NextAuth primero y, si no hay, valida el header `Authorization: Bearer <jwt>`. Todos los handlers en `app/api/*` usan `getAuth(req)`.
+
+```
+┌─────────────┐     cookie httpOnly        ┌──────────────────┐
+│   Web app   │ ────────────────────────► │                  │
+│  (Next.js)  │                            │  /api/*          │
+└─────────────┘                            │  getAuth(req)    │
+                                           │   ├── cookie?    │
+┌─────────────┐     Bearer JWT             │   └── Bearer?    │
+│  Flutter    │ ────────────────────────► │                  │
+│   (mobile)  │                            └──────────────────┘
+└─────────────┘
+```
+
+`proxy.ts` (renombre de `middleware.ts` en Next.js 16) maneja:
+- Auth redirect para páginas HTML (sin sesión → `/login`).
+- CORS + `OPTIONS` preflight para `/api/*`.
+- **No** redirige `/api/*` — cada handler resuelve su auth.
+
+---
+
+## Estructura
+
+```
+app/
+├── (auth)/                login, register
+├── (dashboard)/           meals, weekly, monthly, shopping, profile, dashboard
+└── api/
+    ├── auth/
+    │   ├── [...nextauth]/         # web (cookies)
+    │   ├── mobile-login/          # mobile (JWT)
+    │   ├── me/                    # validar token + user
+    │   └── register/              # crea + auto-loguea (devuelve token)
+    ├── meals/                     # CRUD
+    ├── menus/{weekly,monthly,gemini}/
+    ├── shopping-list/
+    ├── household/{,join,leave}/
+    ├── user/
+    └── upload/                    # UploadThing proxy
+lib/
+├── auth/                  getAuth, getScopeId, issueToken, auth (NextAuth)
+├── algorithms/            menuGenerator (rotación proteica)
+├── ai/                    gemini integration
+└── db/                    mongoose models, connection
+components/                ui base + features
+proxy.ts                   middleware (auth + CORS)
+scripts/test-mobile-api.sh suite de smoke tests para mobile
+```
+
+---
+
+## Documentación
+
+- **`CLAUDE.md`** — spec del proyecto: visión, modelos de datos, algoritmo, fases.
+- **`CLAUDE_FLUTTER.md`** — guía completa para construir el cliente Flutter contra esta API. Contiene la referencia de endpoints, flujo de auth, modelos Dart sugeridos, estructura de carpetas y roadmap por fases. Pensado para abrirse en el repo Flutter como `CLAUDE.md`.
+- **`AGENTS.md`** — notas para agentes que tocan código de Next.js 16 (heads-up sobre breaking changes).
+
+### Endpoints — referencia rápida
+
+| | |
+|---|---|
+| `POST /api/auth/register` | crear cuenta, devuelve `{token, user}` |
+| `POST /api/auth/mobile-login` | login para mobile, devuelve `{token, user}` |
+| `GET /api/auth/me` | validar token, devuelve `{user}` |
+| `GET/POST/PUT/DELETE /api/meals[/id]` | CRUD comidas |
+| `GET/POST/PUT/PATCH /api/menus/weekly` | menú semanal (POST genera, PATCH precios) |
+| `GET/POST /api/menus/monthly` | menú mensual |
+| `POST /api/menus/gemini` | generar con IA |
+| `GET /api/shopping-list?year=&week=` | lista de compras agregada |
+| `GET/POST/DELETE /api/household` · `/join` · `/leave` | hogar compartido |
+| `GET/PUT /api/user` | perfil + preferencias |
+| `POST/DELETE /api/upload` | imágenes (UploadThing) |
+
+Detalles completos (request/response shapes, status codes, token reissue en household) en `CLAUDE_FLUTTER.md`.
+
+---
+
+## Testing
+
+Suite end-to-end del surface mobile (cubre todos los endpoints con Bearer JWT):
+
+```bash
+pnpm dev                          # en una terminal
+bash scripts/test-mobile-api.sh   # en otra
+```
+
+28 assertions: CORS, auth (register/login/me), meals CRUD, menús, shopping list, household + token reissue. Si tocás `proxy.ts`, `getAuth`, `issueToken` o cualquier API route, correr esto antes de mergear.
+
+---
+
+## Convenciones
+
+- **Commits**: `feat:`, `fix:`, `docs:`, `refactor:`, etc.
+- **Branches**: `feature/<name>`, `fix/<name>`.
+- **Componentes**: `PascalCase` (`MealCard.tsx`).
+- **Path aliases**: `@/components`, `@/lib`, `@/types`.
+- **Iconos**: `lucide-react` (sin emojis en UI).
+- **Modo oscuro**: `next-themes` + Tailwind 4 `@custom-variant dark`.
+
+Más detalle en `CLAUDE.md`.
+
+---
+
+## Deploy
+
+Vercel (recomendado para el frontend) + MongoDB Atlas. Setear las mismas variables de entorno en el dashboard de Vercel. Para producción agregar el origin de la app móvil web (si la hubiere) a `ALLOWED_ORIGINS`.
+
+---
+
+**Autor**: Martin Medina (MacroHEX) · **Licencia**: privada

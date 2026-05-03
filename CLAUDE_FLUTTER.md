@@ -6,7 +6,7 @@ Este documento describe la migración **completa** de MealWeaver (Next.js 16 + M
 
 > **Estrategia**: Flutter como cliente móvil/web + mismo backend Next.js (API routes). No se migra el backend, sólo el frontend.
 
-> **Estado del backend**: ✅ Listo para Flutter. Los cambios necesarios ya están implementados (ver sección [Cambios Implementados en el Backend](#cambios-implementados-en-el-backend)).
+> **Estado del backend**: ✅ Listo para Flutter. Los cambios necesarios ya están implementados y validados con suite end-to-end (`scripts/test-mobile-api.sh` — 28/28 pasando). Ver sección [Cambios Implementados en el Backend](#cambios-implementados-en-el-backend).
 
 ---
 
@@ -285,7 +285,15 @@ class Household {
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-const String kBaseUrl = 'http://localhost:3000'; // Cambiar a producción
+// Pasar via --dart-define=API_BASE_URL=...
+// - Android emulator: http://10.0.2.2:3000 (no localhost — apunta al emulador)
+// - iOS simulator:    http://localhost:3000
+// - Dispositivo físico: http://<IP-LAN>:3000 (con backend escuchando en 0.0.0.0)
+// - Producción:       https://api.mealweaver.app
+const String kBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://10.0.2.2:3000',
+);
 
 final dioProvider = Provider<Dio>((ref) {
   final dio = Dio(BaseOptions(
@@ -337,11 +345,15 @@ Todos los cambios necesarios para soportar Flutter ya están en el backend. No h
 ### Archivos nuevos creados:
 - `lib/auth/issueToken.ts` — Firma JWT (HS256, 30 días) usando `AUTH_SECRET`
 - `lib/auth/getAuth.ts` — Helper unificado: acepta NextAuth session cookie **O** `Authorization: Bearer <token>`
-- `app/api/auth/mobile-login/route.ts` — Endpoint de login para móvil
+- `app/api/auth/mobile-login/route.ts` — Login para móvil
+- `app/api/auth/me/route.ts` — Validar token + traer user actual (uso en cold start)
+- `scripts/test-mobile-api.sh` — Suite de smoke tests end-to-end (28 tests)
 
 ### Archivos modificados:
+- `proxy.ts` — `/api/*` ya no se redirige a `/login`; agrega CORS y maneja `OPTIONS` preflight para todos los endpoints
+- `app/api/auth/register/route.ts` — Auto-loguea: devuelve `{token, user}` (igual shape que `/mobile-login`)
 - `lib/auth/getScopeId.ts` — Ahora acepta `{ id, householdId }` genérico
-- Todos los 11 API routes — Reemplazado `auth()` por `getAuth(req)` (web sigue funcionando igual)
+- Todos los 12 API routes — Usan `getAuth(req)` que soporta cookie + Bearer (web sigue igual)
 
 ### Endpoints de household actualizados (devuelven nuevo token):
 | Endpoint | Cuándo devuelve `token` |
@@ -351,7 +363,105 @@ Todos los cambios necesarios para soportar Flutter ya están en el backend. No h
 | `POST /api/household/leave` | Al salir → token con `householdId: null` |
 | `DELETE /api/household` | Al eliminar → token con `householdId: null` |
 
-Flutter debe guardar el nuevo token recibido en estas respuestas para que las siguientes requests usen el `scopeId` correcto.
+Flutter debe guardar el nuevo token recibido en estas respuestas para que las siguientes requests usen el `scopeId` correcto. **Recomendación**: hacerlo en un `Interceptor.onResponse` que detecte `data['token']` y lo persista — así nunca se olvida.
+
+---
+
+## CORS (sólo Flutter Web)
+
+Native Flutter (iOS/Android/desktop) **no aplica CORS**. Sólo importa si compilás a Flutter Web.
+
+El backend lee `ALLOWED_ORIGINS` de su `.env.local` (comma-separated). El proxy:
+- Responde `OPTIONS` con `204` y headers CORS automáticamente.
+- Echa el origin solicitante si está en la lista (o si la lista contiene `*`).
+- Si no, no setea `Access-Control-Allow-Origin` y el browser bloquea.
+
+```env
+# Backend .env.local
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5000,https://app.mealweaver.com
+```
+
+Para correr Flutter Web en dev contra backend local, agregar el origin del dev server (`flutter run -d chrome` por defecto usa un puerto random — fijarlo con `--web-port=5000`).
+
+---
+
+## API Endpoints — Referencia Completa
+
+> Base URL: `${API_BASE_URL}`. Headers: `Content-Type: application/json`, `Authorization: Bearer <token>` (excepto registro/login). Errores siempre `{ "error": "mensaje" }`.
+
+### Auth
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| POST | `/api/auth/register` | `{name, email, password}` | 201 `{token, user}` · 400 · 409 (duplicado) |
+| POST | `/api/auth/mobile-login` | `{email, password}` | 200 `{token, user}` · 401 |
+| GET  | `/api/auth/me` | — | 200 `{user}` · 401 |
+
+`user` = `{id, email, name, householdId, avatar?, preferences}`. **No hay logout server-side**: el cliente borra el token.
+
+### User
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/user` | — | 200 user (con timestamps) |
+| PUT | `/api/user` | `{name?, preferences?}` | 200 user actualizado |
+
+### Meals
+| Method | Path | Body / Query | Response |
+|---|---|---|---|
+| GET | `/api/meals` | `?type=&search=` | 200 `Meal[]` |
+| POST | `/api/meals` | `{name, type, ingredients[], isBreakfast?, description?, instructions?, imageUrl?, imageKey?, notes?}` | 201 Meal · 400 |
+| GET | `/api/meals/{id}` | — | 200 Meal · 404 |
+| PUT | `/api/meals/{id}` | partial Meal | 200 Meal · 404 |
+| DELETE | `/api/meals/{id}` | — | 200 `{message}` · 404 |
+
+`MealType`: `"carne_roja" | "chancho" | "pollo" | "pescado" | "pasta" | "arroz" | "sopa" | "otro"`. `ingredients`: `[{name, quantity}]`.
+
+### Upload (UploadThing proxy)
+| Method | Path | Body / Query | Response |
+|---|---|---|---|
+| POST | `/api/upload` | multipart `file` (≤10MB, image/*) | 200 `{url, key}` · 400 · 503 |
+| DELETE | `/api/upload` | `?key=...` | 200 `{message}` |
+
+### Weekly menu
+| Method | Path | Body / Query | Response |
+|---|---|---|---|
+| GET | `/api/menus/weekly` | `?year=&week=` | 200 `WeeklyMenu \| null` |
+| POST | `/api/menus/weekly` | `{year, week, mealsPerDay?}` | 200 WeeklyMenu · 400 (<5 meals) |
+| PUT | `/api/menus/weekly` | `{year, week, days[]}` | 200 WeeklyMenu · 404 |
+| PATCH | `/api/menus/weekly` | `{year, week, prices: {ingrediente: number}}` | 200 WeeklyMenu · 404 |
+
+`week` = ISO 8601 week number (1-53). `days` siempre tiene 7 entradas: `{dayOfWeek, breakfast?, lunch?, dinner?, cooked: string[], notes?}`. `dayOfWeek` ∈ `"Monday"..."Sunday"`. `cooked` es array de slot names: `["lunch", "dinner"]`. Precios en guaraníes (enteros).
+
+### Monthly menu
+| Method | Path | Body / Query | Response |
+|---|---|---|---|
+| GET | `/api/menus/monthly` | `?year=&month=` | 200 `{weeks: number[], menus: WeeklyMenu[]}` |
+| POST | `/api/menus/monthly` | `{year, month, mealsPerDay?}` | 200 `WeeklyMenu[]` · 400 |
+
+### Gemini AI
+| Method | Path | Body | Response |
+|---|---|---|---|
+| POST | `/api/menus/gemini` | `{year, week, mealsPerDay?}` | 200 WeeklyMenu · 400 · 500 · 503 |
+
+Latencia 3-8s. Modelo `gemini-2.5-flash-lite`.
+
+### Shopping list
+| Method | Path | Query | Response |
+|---|---|---|---|
+| GET | `/api/shopping-list` | `?year=&week=` | 200 `ShoppingItem[]` (vacío si no hay menú) |
+
+`ShoppingItem`: `{name, quantities: string[], mealNames: string[]}`.
+
+### Household (⚠️ devuelven token nuevo — guardarlo)
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/household` | — | 200 `Household \| null` |
+| POST | `/api/household` | `{name}` | 201 `{householdId, name, inviteCode, token}` · 409 |
+| DELETE | `/api/household` | — | 200 `{message, token}` · 403 (no creador) · 404 |
+| POST | `/api/household/join` | `{inviteCode}` | 200 `{householdId, name, inviteCode, token}` · 404 · 409 |
+| POST | `/api/household/leave` | — | 200 `{message, token}` · 400 |
+
+`Household`: `{_id, name, members: string[], memberDetails: {_id, name, email}[], inviteCode, createdBy}`.
 
 ---
 
@@ -383,13 +493,27 @@ class AuthService {
     return AuthResult.fromJson(response.data);
   }
 
-  Future<void> register(String name, String email, String password) async {
-    await _dio.post('/api/auth/register', data: {
+  Future<AuthResult> register(String name, String email, String password) async {
+    // register auto-loguea: devuelve { token, user } igual que /mobile-login
+    final response = await _dio.post('/api/auth/register', data: {
       'name': name,
       'email': email,
       'password': password,
     });
-    // register no hace login automático — llamar login() después
+    final token = response.data['token'] as String;
+    await _storage.write(key: 'jwt_token', value: token);
+    return AuthResult.fromJson(response.data);
+  }
+
+  /// Valida el token al iniciar la app. 401 → ir a /login.
+  Future<User?> me() async {
+    try {
+      final response = await _dio.get('/api/auth/me');
+      return User.fromJson(response.data['user'] as Map<String, dynamic>);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) return null;
+      rethrow;
+    }
   }
 
   Future<void> logout() async {
@@ -1268,17 +1392,22 @@ flutter build web --release     # Web
 
 ## Notas del Agente
 
-- **Backend listo**: `POST /api/auth/mobile-login` y `POST /api/upload` ya aceptan Bearer JWT. Todos los endpoints API también.
-- **Household**: Después de `POST /api/household`, `POST /api/household/join`, `POST /api/household/leave` y `DELETE /api/household`, la respuesta incluye un campo `token` con el JWT actualizado. Flutter **debe guardarlo** para que el scopeId sea correcto en las siguientes requests.
-- **Nunca** hardcodear la URL base — usar `--dart-define=BASE_URL=https://...` o `flutter_dotenv`
-- El algoritmo de generación de menús puede correr **localmente en Flutter** (sin necesidad de API) para mejor UX offline — sólo sincronizar resultado con `PUT /api/menus/weekly`
-- Mantener paridad 1:1 con los `apiValue` de `MealType` (ej: `"carne_roja"`, no `"carneRoja"`)
-- Los IDs de MongoDB son strings (ObjectId serializado) — tratar siempre como `String` en Dart
-- El endpoint de register (`POST /api/auth/register`) **no** hace login automático — llamar `POST /api/auth/mobile-login` después
+- **Backend listo**: todos los `/api/*` aceptan Bearer JWT (vía `getAuth(req)` en `lib/auth/getAuth.ts`). Verificado con `scripts/test-mobile-api.sh` (28/28).
+- **Household — reissue de token**: después de `POST /api/household`, `POST /api/household/join`, `POST /api/household/leave` y `DELETE /api/household`, la respuesta incluye `token` con el JWT actualizado (cambia `householdId` embebido). Flutter **debe sobreescribir** el token guardado o las siguientes requests usarán el viejo `scopeId` y verán data incorrecta. Implementarlo en un `Interceptor.onResponse` es la opción menos error-prone.
+- **Register auto-loguea**: `POST /api/auth/register` devuelve `{token, user}` igual que `/mobile-login`. No hace falta segundo request.
+- **Cold start del app**: llamar `GET /api/auth/me` con el token guardado. 200 → al dashboard. 401 → borrar token y mandar a `/login`.
+- **No hay logout server-side**: el JWT es stateless. Logout = borrar token de `flutter_secure_storage`.
+- **Nunca** hardcodear la URL base — usar `--dart-define=API_BASE_URL=...` (ver sección [Configuración de Red](#configuración-de-red-libcorenetwork)).
+- **CORS**: native no aplica. Flutter Web → agregar el origin a `ALLOWED_ORIGINS` del backend.
+- **Algoritmo de generación**: puede correr local para mejor UX offline; sincronizar con `PUT /api/menus/weekly` cuando haya red.
+- **MealType en API**: usar siempre el `apiValue` (`"carne_roja"`, no `"carneRoja"`) — es lo que valida el schema de Mongoose.
+- **IDs de MongoDB**: strings (ObjectId serializado). Tratar siempre como `String` en Dart.
+- **Tests**: el repo backend tiene `scripts/test-mobile-api.sh` — correrlo si tocás el backend para verificar que mobile sigue verde.
 
 ---
 
 **Creado**: 28/03/2026
-**Versión**: 1.1 (backend implementado)
+**Última actualización**: 03/05/2026 — proxy fix + CORS + `/auth/me` + register auto-login + suite de smoke tests
+**Versión**: 1.2
 **Autor**: Claude (basado en análisis completo del proyecto MealWeaver Next.js)
-**Estado**: ✅ Backend listo — Flutter puede arrancar desde Fase 0 sin tocar el backend
+**Estado**: ✅ Backend 100% listo y validado (28/28 tests). Flutter puede arrancar desde Fase 0 sin tocar el backend.

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/db/mongoose";
 import User from "@/lib/db/models/User";
+import { issueToken } from "@/lib/auth/issueToken";
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,8 +31,24 @@ export async function POST(req: NextRequest) {
       preferences: { theme: "light", restrictions: [], mealsPerDay: 3 },
     });
 
+    const userId = user._id.toString();
+    const token = await issueToken({
+      userId,
+      email: user.email,
+      name: user.name,
+      householdId: null,
+    });
+
     return NextResponse.json(
-      { message: "Usuario creado exitosamente", id: user._id.toString() },
+      {
+        token,
+        user: {
+          id: userId,
+          email: user.email,
+          name: user.name,
+          householdId: null,
+        },
+      },
       { status: 201 }
     );
   } catch {

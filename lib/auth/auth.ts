@@ -6,6 +6,11 @@ import User from "@/lib/db/models/User";
 import Household from "@/lib/db/models/Household";
 
 export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
+  // Required in production self-hosted deploys (next start, Docker, etc).
+  // Without it, NextAuth v5 rejects any incoming host as untrusted unless
+  // it auto-detects the platform (Vercel sets VERCEL_URL automatically).
+  // Override per-env with AUTH_TRUST_HOST=false if you want stricter checking.
+  trustHost: true,
   providers: [
     Credentials({
       name: "credentials",
